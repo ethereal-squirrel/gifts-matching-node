@@ -2,9 +2,9 @@ require('dotenv').config();
 const mysql = require('mysql');
 
 /*
-  Initialise the database connection/
+  Initialise the database db.
 */
-const connection = mysql.createConnection({
+const db = mysql.createConnection({
   host: process.env.SQL_HOST,
   user: process.env.SQL_USER,
   password: process.env.SQL_PASSWORD,
@@ -54,7 +54,7 @@ function shuffle(array) {
 */
 function match() {
   console.log('Connecting to database...');
-  connection.connect();
+  db.connect();
 
   console.time("execution");
 
@@ -67,7 +67,7 @@ function match() {
   console.log('Querying database...');
   console.log('----------------------------------------');
 
-  connection.query('SELECT * FROM DoNotMatch', function (error, results, fields) {
+  db.query('SELECT * FROM DoNotMatch', function (error, results, fields) {
     results.map((row) => {
       dnmArray.push(row['FirstUserId']);
       dnmArray.push(row['SecondUserId']);
@@ -87,7 +87,7 @@ function match() {
     console.log(`Found ${Object.keys(dnm).length} entries in DoNotMatch table.`);
   });
 
-  connection.query('SELECT * FROM Matches', function (error, results, fields) {
+  db.query('SELECT * FROM Matches', function (error, results, fields) {
     if (error) throw error;
 
     console.log(`Found ${results.length} users to match.`);
@@ -242,7 +242,7 @@ function match() {
 
     var sql = "DELETE FROM Matched";
 
-    connection.query(sql, [], function (err) {
+    db.query(sql, [], function (err) {
       if (err) throw err;
 
       var sql = "INSERT INTO Matched (user_id, matched_with) VALUES ?";
@@ -252,12 +252,12 @@ function match() {
         insert.push([user.user_id, user.matched_with])
       });
 
-      connection.query(sql, [insert], function (err) {
+      db.query(sql, [insert], function (err) {
         if (err) throw err;
 
         console.log('Matching complete.');
         console.timeEnd("execution");
-        connection.end();
+        db.end();
       });
     });
 
