@@ -60,9 +60,8 @@ async function match(exchangeId) {
   
   console.log(`Attempting matching loop for #${exchangeId}`);
   console.log('Connecting to database...');
+  
   db.connect();
-
-  //populateDatabase();
 
   console.time("execution");
 
