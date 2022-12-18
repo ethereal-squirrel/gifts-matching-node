@@ -4,12 +4,6 @@ const mysql = require('mysql');
 /*
   Initialise the database db.
 */
-const db = mysql.createConnection({
-  host: process.env.SQL_HOST,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  database: process.env.SQL_DATABASE
-});
 
 /*
   Initialise the do not match array.
@@ -36,56 +30,6 @@ const doNotMatch = (user_id, match_id) => {
   return false;
 };
 
-const populateDatabase = () => {
-  var i = 1;
-  var sql = 'INSERT INTO Matches (UserId, MatchingGroup) VALUES ';
-
-  while (i < 2000) {
-    sql = sql + `(${i}, "US"), `;
-    i++;
-  };
-
-  i = 2001;
-
-  while (i < 2500) {
-    sql = sql + `(${i}, "GB"), `;
-    i++;
-  };
-
-  while (i < 3000) {
-    sql = sql + `(${i}, "CA"), `;
-    i++;
-  };
-
-  while (i < 3003) {
-    sql = sql + `(${i}, "DE"), `;
-    i++;
-  };
-
-  while (i < 3007) {
-    sql = sql + `(${i}, "FR"), `;
-    i++;
-  };
-
-  while (i < 4005) {
-    sql = sql + `(${i}, "JP"), `;
-    i++;
-  };
-
-  while (i < 4742) {
-    sql = sql + `(${i}, "ES"), `;
-    i++;
-  };
-
-  sql = sql + `(4742, "KR");`;
-
-  db.query(sql, [], function (err) {
-    if (err) throw err;
-
-    console.log(`Database populated.`);
-  });
-}
-
 /*
   A simple function to shuffle an array.
 */
@@ -107,6 +51,13 @@ function shuffle(array) {
   The primary matching loop.
 */
 async function match(exchangeId) {
+  const db = mysql.createConnection({
+    host: process.env.SQL_HOST,
+    user: process.env.SQL_USER,
+    password: process.env.SQL_PASSWORD,
+    database: process.env.SQL_DATABASE
+  });
+  
   console.log(`Attempting matching loop for #${exchangeId}`);
   console.log('Connecting to database...');
   db.connect();
