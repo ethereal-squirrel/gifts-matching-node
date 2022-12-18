@@ -17,6 +17,10 @@ const db = mysql.createConnection({
 var dnm = {};
 var dnmArray = [];
 
+var countMatched = 0;
+var countUnmatched = 0;
+var matchList = [];
+
 /*
   A simple function to check if a user is in the do not match array, and if so, if they are colliding with the user we're checking.
 */
@@ -31,6 +35,56 @@ const doNotMatch = (user_id, match_id) => {
 
   return false;
 };
+
+const populateDatabase = () => {
+  var i = 1;
+  var sql = 'INSERT INTO Matches (UserId, MatchingGroup) VALUES ';
+
+  while (i < 2000) {
+    sql = sql + `(${i}, "US"), `;
+    i++;
+  };
+
+  i = 2001;
+
+  while (i < 2500) {
+    sql = sql + `(${i}, "GB"), `;
+    i++;
+  };
+
+  while (i < 3000) {
+    sql = sql + `(${i}, "CA"), `;
+    i++;
+  };
+
+  while (i < 3003) {
+    sql = sql + `(${i}, "DE"), `;
+    i++;
+  };
+
+  while (i < 3007) {
+    sql = sql + `(${i}, "FR"), `;
+    i++;
+  };
+
+  while (i < 4005) {
+    sql = sql + `(${i}, "JP"), `;
+    i++;
+  };
+
+  while (i < 4742) {
+    sql = sql + `(${i}, "ES"), `;
+    i++;
+  };
+
+  sql = sql + `(4742, "KR");`;
+
+  db.query(sql, [], function (err) {
+    if (err) throw err;
+
+    console.log(`Database populated.`);
+  });
+}
 
 /*
   A simple function to shuffle an array.
@@ -52,9 +106,12 @@ function shuffle(array) {
 /*
   The primary matching loop.
 */
-function match() {
+async function match(exchangeId) {
+  console.log(`Attempting matching loop for #${exchangeId}`);
   console.log('Connecting to database...');
   db.connect();
+
+  //populateDatabase();
 
   console.time("execution");
 
@@ -67,104 +124,63 @@ function match() {
   console.log('Querying database...');
   console.log('----------------------------------------');
 
-  db.query('SELECT * FROM DoNotMatch', function (error, results, fields) {
-    results.map((row) => {
-      dnmArray.push(row['FirstUserId']);
-      dnmArray.push(row['SecondUserId']);
+  await new Promise((resolve, reject) => {
+    db.query('SELECT * FROM DoNotMatch', function (error, results, fields) {
+      results.map((row) => {
+        dnmArray.push(row['FirstUserId']);
+        dnmArray.push(row['SecondUserId']);
 
-      if (!dnm[row['FirstUserId']]) {
-        dnm[row['FirstUserId']] = [];
-      };
+        if (!dnm[row['FirstUserId']]) {
+          dnm[row['FirstUserId']] = [];
+        };
 
-      if (!dnm[row['SecondUserId']]) {
-        dnm[row['SecondUserId']] = [];
-      };
+        if (!dnm[row['SecondUserId']]) {
+          dnm[row['SecondUserId']] = [];
+        };
 
-      dnm[row['FirstUserId']].push(row['SecondUserId']);
-      dnm[row['SecondUserId']].push(row['FirstUserId']);
+        dnm[row['FirstUserId']].push(row['SecondUserId']);
+        dnm[row['SecondUserId']].push(row['FirstUserId']);
+      });
+
+      console.log(`Found ${Object.keys(dnm).length} entries in DoNotMatch table.`);
+
+      resolve();
     });
-
-    console.log(`Found ${Object.keys(dnm).length} entries in DoNotMatch table.`);
   });
 
-  db.query('SELECT * FROM Matches', function (error, results, fields) {
-    if (error) throw error;
+  await new Promise((resolve, reject) => {
+    db.query('SELECT * FROM MatchesNew WHERE ExchangeId = ' + exchangeId, function (error, results, fields) {
+      if (error) throw error;
 
-    console.log(`Found ${results.length} users to match.`);
+      console.log(`Found ${results.length} users to match.`);
 
-    results.map(row => {
-      let user = {
-        user_id: row.UserId,
-        matching_group: row.MatchingGroup,
-        send_to: row.SendTo
-      };
-
-      if (!groups[user.matching_group]) {
-        groups[user.matching_group] = [];
-      };
-
-      groups[user.matching_group].push(user);
-    });
-
-    console.log(`Found ${Object.keys(groups).length} matching groups.`);
-    console.log('----------------------------------------');
-
-    Object.keys(groups).map((group) => {
-      console.log(`Attempting to match ${group}...`);
-
-      if (groups[group].length == 1) {
-        // If there's only one user in the group, we can't match them.
-
-        unmatched++;
-        console.log(`Only one user in ${group}. Unable to match.`);
-      } else if (groups[group].length == 2) {
-        // If there's only two users in the group, we can match them with one another.
-
-        if (!doNotMatch(groups[group][0].user_id, groups[group][1].user_id)) {
-          users.push({
-            user_id: groups[group][0].user_id,
-            matched_with: groups[group][1].user_id
-          });
-
-          users.push({
-            user_id: groups[group][1].user_id,
-            matched_with: groups[group][0].user_id
-          });
-
-          matched = matched + 2;
-
-          console.log('Users Matched: 2/2 [Enforced two-way match.]');
-        } else {
-          // If the two users are in the do not match table, we can't match them.
-
-          unmatched = unmatched + 2;
-
-          console.log('Unable to two-way match, do not match is present. Skipping group.');
+      results.map(row => {
+        let user = {
+          user_id: row.UserId,
+          matching_group: row.MatchingGroup,
+          send_to: row.SendTo
         };
-      } else if (groups[group].length === 3) {
-        // If there's only three users in the group, we can match them with one another.
 
-        if (!doNotMatch(groups[group][0].user_id, groups[group][1].user_id) && !doNotMatch(groups[group][0].user_id, groups[group][2].user_id) && !doNotMatch(groups[group][1].user_id, groups[group][2].user_id)) {
-          users.push({
-            user_id: groups[group][0].user_id,
-            matched_with: groups[group][1].user_id
-          });
+        if (!groups[user.matching_group]) {
+          groups[user.matching_group] = [];
+        };
 
-          users.push({
-            user_id: groups[group][1].user_id,
-            matched_with: groups[group][2].user_id
-          });
+        groups[user.matching_group].push(user);
+      });
 
-          users.push({
-            user_id: groups[group][2].user_id,
-            matched_with: groups[group][0].user_id
-          });
+      console.log(`Found ${Object.keys(groups).length} matching groups.`);
+      console.log('----------------------------------------');
 
-          matched = matched + 3;
+      Object.keys(groups).map((group) => {
+        console.log(`Attempting to match ${group}...`);
 
-          console.log('Users Matched: 3/3 [Enforced three-way match.]');
-        } else {
-          // If there is a do not match collision, we'll attempt a pairing between two of them.
+        if (groups[group].length == 1) {
+          // If there's only one user in the group, we can't match them.
+
+          unmatched++;
+          console.log(`Only one user in ${group}. Unable to match.`);
+        } else if (groups[group].length == 2) {
+          // If there's only two users in the group, we can match them with one another.
 
           if (!doNotMatch(groups[group][0].user_id, groups[group][1].user_id)) {
             users.push({
@@ -178,27 +194,26 @@ function match() {
             });
 
             matched = matched + 2;
-            unmatched++;
 
-            console.log('Users Matched: 2/3 [Unable to three-way match.]');
-          } else if (!doNotMatch(groups[group][1].user_id, groups[group][2].user_id)) {
-            users.push({
-              user_id: groups[group][1].user_id,
-              matched_with: groups[group][2].user_id
-            });
+            console.log('Users Matched: 2/2 [Enforced two-way match.]');
+          } else {
+            // If the two users are in the do not match table, we can't match them.
 
+            unmatched = unmatched + 2;
+
+            console.log('Unable to two-way match, do not match is present. Skipping group.');
+          };
+        } else if (groups[group].length === 3) {
+          // If there's only three users in the group, we can match them with one another.
+
+          if (!doNotMatch(groups[group][0].user_id, groups[group][1].user_id) && !doNotMatch(groups[group][0].user_id, groups[group][2].user_id) && !doNotMatch(groups[group][1].user_id, groups[group][2].user_id)) {
             users.push({
-              user_id: groups[group][2].user_id,
+              user_id: groups[group][0].user_id,
               matched_with: groups[group][1].user_id
             });
 
-            matched = matched + 2;
-            unmatched++;
-
-            console.log('Users Matched: 2/3 [Unable to three-way match.]');
-          } else if (!doNotMatch(groups[group][0].user_id, groups[group][2].user_id)) {
             users.push({
-              user_id: groups[group][0].user_id,
+              user_id: groups[group][1].user_id,
               matched_with: groups[group][2].user_id
             });
 
@@ -207,60 +222,103 @@ function match() {
               matched_with: groups[group][0].user_id
             });
 
-            matched = matched + 2;
-            unmatched++;
+            matched = matched + 3;
 
-            console.log('Users Matched: 2/3 [Unable to three-way match.]');
+            console.log('Users Matched: 3/3 [Enforced three-way match.]');
           } else {
-            // If there is a do not match collision across all three users, we can't match them.
+            // If there is a do not match collision, we'll attempt a pairing between two of them.
 
-            unmatched = unmatched + 3;
+            if (!doNotMatch(groups[group][0].user_id, groups[group][1].user_id)) {
+              users.push({
+                user_id: groups[group][0].user_id,
+                matched_with: groups[group][1].user_id
+              });
 
-            console.log('Unable to three-way match, do not match is present across all users. Skipping group.');
-          }
+              users.push({
+                user_id: groups[group][1].user_id,
+                matched_with: groups[group][0].user_id
+              });
+
+              matched = matched + 2;
+              unmatched++;
+
+              console.log('Users Matched: 2/3 [Unable to three-way match.]');
+            } else if (!doNotMatch(groups[group][1].user_id, groups[group][2].user_id)) {
+              users.push({
+                user_id: groups[group][1].user_id,
+                matched_with: groups[group][2].user_id
+              });
+
+              users.push({
+                user_id: groups[group][2].user_id,
+                matched_with: groups[group][1].user_id
+              });
+
+              matched = matched + 2;
+              unmatched++;
+
+              console.log('Users Matched: 2/3 [Unable to three-way match.]');
+            } else if (!doNotMatch(groups[group][0].user_id, groups[group][2].user_id)) {
+              users.push({
+                user_id: groups[group][0].user_id,
+                matched_with: groups[group][2].user_id
+              });
+
+              users.push({
+                user_id: groups[group][2].user_id,
+                matched_with: groups[group][0].user_id
+              });
+
+              matched = matched + 2;
+              unmatched++;
+
+              console.log('Users Matched: 2/3 [Unable to three-way match.]');
+            } else {
+              // If there is a do not match collision across all three users, we can't match them.
+
+              unmatched = unmatched + 3;
+
+              console.log('Unable to three-way match, do not match is present across all users. Skipping group.');
+            }
+          };
+        } else {
+          // If there's more than three users in the group, we'll attempt to match them using our group function.
+
+          let result = matchGroup(groups[group]);
+          console.log('Users Matched: ' + result.matched + ' / ' + (result.matched + result.unmatched));
+
+          matched = matched + result.matched;
+          unmatched = unmatched + result.unmatched;
+          users = users.concat(result.matchedUsers);
         };
-      } else {
-        // If there's more than three users in the group, we'll attempt to match them using our group function.
 
-        let result = matchGroup(groups[group]);
-        console.log('Users Matched: ' + result.matched + ' / ' + (result.matched + result.unmatched));
+        console.log('----------------------------------------');
+      });
 
-        matched = matched + result.matched;
-        unmatched = unmatched + result.unmatched;
-        users = users.concat(result.matchedUsers);
-      };
+      console.log(`Matched Users: ${matched}`);
+      console.log(`Unmatched Users: ${unmatched}`);
 
       console.log('----------------------------------------');
-    });
 
-    console.log(`Matched Users: ${matched}`);
-    console.log(`Unmatched Users: ${unmatched}`);
+      console.log(`Matching complete. [#${exchangeId}]`);
+      console.timeEnd("execution");
 
-    console.log('----------------------------------------');
+      countMatched = matched;
+      countUnmatched = unmatched;
+      matchList = users;
 
-    console.log('Persisting to database...');
+      var sql = "DELETE FROM MatchesNew WHERE ExchangeId = " + exchangeId;
 
-    var sql = "DELETE FROM Matched";
-
-    db.query(sql, [], function (err) {
-      if (err) throw err;
-
-      var sql = "INSERT INTO Matched (user_id, matched_with) VALUES ?";
-      var insert = [];
-
-      users.map((user) => {
-        insert.push([user.user_id, user.matched_with])
-      });
-
-      db.query(sql, [insert], function (err) {
+      db.query(sql, [], function (err) {
         if (err) throw err;
 
-        console.log('Matching complete.');
+        console.log(`Matching complete. [#${exchangeId}]`);
         console.timeEnd("execution");
         db.end();
+
+        resolve();
       });
     });
-
   });
 };
 
@@ -276,12 +334,18 @@ function matchGroup(group) {
   groupUsers = shuffle(group);
 
   var validDnm = false;
+  var dnmCount = 0;
 
   groupUsers.map((user) => {
     if (dnmArray.includes(user.user_id)) {
       validDnm = true;
+      dnmCount++;
     };
   });
+
+  if (dnmCount <= 1) {
+    validDnm = false;
+  };
 
   if (validDnm === false) {
     /*
@@ -350,7 +414,7 @@ function matchGroup(group) {
         };
       });
 
-      if(currentUnmatched.length == 0) {
+      if (currentUnmatched.length == 0) {
         c = false;
         groupMatched = currentMatched.length;
         groupUnmatched = currentUnmatched.length;
@@ -365,4 +429,27 @@ function matchGroup(group) {
   return { matchedUsers: matchedUsers, matched: groupMatched, unmatched: groupUnmatched };
 };
 
-match();
+module.exports.handler = async (event, context, callback) => {
+  let body = event.body.replace("'", '');
+  let obj = JSON.parse(body);
+
+  let exchangeId = obj.exchangeId;
+  console.log(`Exchange ID: ${exchangeId}`);
+
+  let output = await match(exchangeId);
+
+  const response = {
+    statusCode: 200,
+    body: JSON.stringify({
+      matched: countMatched,
+      unmatched: countUnmatched,
+      matchList: matchList
+    }),
+  };
+
+  console.log(`Response...`);
+  console.dir(response);
+
+  callback(null, response);
+  return response;
+};
